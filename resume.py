@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import copy
 import json
+import random
 import re
 import sys
 import time
@@ -13,16 +14,22 @@ logger, config, partitions = common.get_common('resume')
 
 # Retry in case the request failed because of eventual consistency
 def retry(func, *args, **kwargs):
+    backoff_in_seconds = 1
     nb_retry = 1
-    MAX_RETRIES = 3
+    MAX_RETRIES = 5
+    MAX_BACKOFF_TIME = 60
     while True:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            if nb_retry <= MAX_RETRIES:
-                logger.debug('Failed %s %d time(s): %s', func.__name__, nb_retry, e)
+            backoff_time = (backoff_in_seconds * 2**nb_retry +
+                            random.uniform(0, 1))
+            if nb_retry <= MAX_RETRIES and backoff_time <= MAX_BACKOFF_TIME:
+                logger.debug('Failed %s %d time(s): %s', func.__name__,
+                             nb_retry, e)
+
+                time.sleep(backoff_time)
                 nb_retry += 1
-                time.sleep(nb_retry)
             else:
                 raise e
 
