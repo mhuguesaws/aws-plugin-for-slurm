@@ -1,0 +1,41 @@
+function backoff {
+  local max_timeout=300
+  local timeout=1
+  local total_timeout=0
+  local exitCode=0
+
+  while [[ $total_timeout -lt $max_timeout ]]
+  do
+    "$@"
+    exitCode=$?
+
+    if [[ $exitCode == 0 ]]
+    then
+      break
+    fi
+
+    echo "Failed to get instance tag! Retrying in $timeout.." 1>&2
+    sleep $timeout
+    timeout=$(( $timeout * 2 ))
+    total_timeout=$(( $total_timeout + $timeout ))
+  done
+
+  if [[ $exitCode != 0 ]]
+  then
+    echo "Failed to retrieve hostname from instance tag ($@)" 1>&2
+  fi
+
+  return $exitCode
+}
+
+instanceid=`/usr/bin/curl --fail -m 2 -s 169.254.169.254/latest/meta-data/instance-id`
+if [[ ! -z "$instanceid" ]]; then
+   region=`/usr/bin/curl -s 169.254.169.254/latest/meta-data/placement/availability-zone`
+   region=${region::-1}
+   hostname=`backoff /usr/bin/aws ec2 describe-tags --filters "Name=resource-id,Values=$instanceid" "Name=key,Values=Name" --region $region --query "Tags[0].Value" --output=text`
+fi
+if [ ! -z "$hostname" -a "$hostname" != "None" ]; then
+   echo $hostname
+else
+   echo `hostname`
+fi
